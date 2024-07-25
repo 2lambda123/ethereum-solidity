@@ -36,17 +36,6 @@ using namespace solidity::langutil;
 using namespace solidity::util;
 using namespace solidity::yul;
 
-namespace
-{
-
-bool hasLeadingOrTrailingDot(std::string_view const _s)
-{
-	yulAssert(!_s.empty());
-	return _s.front() == '.' || _s.back() == '.';
-}
-
-}
-
 void yul::removeEmptyBlocks(Block& _block)
 {
 	auto isEmptyBlock = [](Statement const& _st) -> bool {
@@ -55,16 +44,11 @@ void yul::removeEmptyBlocks(Block& _block)
 	ranges::actions::remove_if(_block.statements, isEmptyBlock);
 }
 
-bool yul::isRestrictedIdentifier(Dialect const& _dialect, YulName const& _identifier)
+std::optional<evmasm::Instruction> yul::toEVMInstruction(YulNameRepository const& _nameRepository, YulName const& _name)
 {
-	return _identifier.empty() || hasLeadingOrTrailingDot(_identifier.str()) || TokenTraits::isYulKeyword(_identifier.str()) || _dialect.reservedIdentifier(_identifier);
-}
-
-std::optional<evmasm::Instruction> yul::toEVMInstruction(Dialect const& _dialect, YulName const& _name)
-{
-	if (auto const* dialect = dynamic_cast<EVMDialect const*>(&_dialect))
-		if (BuiltinFunctionForEVM const* builtin = dialect->builtin(_name))
-			return builtin->instruction;
+	if (_nameRepository.isEvmDialect())
+		if (auto const* builtin = _nameRepository.builtin(_name))
+			return dynamic_cast<BuiltinFunctionForEVM const*>(builtin->definition)->instruction;
 	return std::nullopt;
 }
 

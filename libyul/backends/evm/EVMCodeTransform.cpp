@@ -49,10 +49,11 @@ using namespace solidity::util;
 CodeTransform::CodeTransform(
 	AbstractAssembly& _assembly,
 	AsmAnalysisInfo& _analysisInfo,
+	YulNameRepository const& _nameRepository,
 	Block const& _block,
 	bool _allowStackOpt,
-	EVMDialect const& _dialect,
 	BuiltinContext& _builtinContext,
+	EVMDialect const* _dialectOverride,
 	ExternalIdentifierAccess::CodeGenerator _identifierAccessCodeGen,
 	UseNamedLabels _useNamedLabelsForFunctions,
 	std::shared_ptr<Context> _context,
@@ -61,7 +62,8 @@ CodeTransform::CodeTransform(
 ):
 	m_assembly(_assembly),
 	m_info(_analysisInfo),
-	m_dialect(_dialect),
+	m_nameRepository(_nameRepository),
+	m_evmDialect(_dialectOverride ? _dialectOverride : _nameRepository.evmDialect()),
 	m_builtinContext(_builtinContext),
 	m_allowStackOpt(_allowStackOpt),
 	m_useNamedLabelsForFunctions(_useNamedLabelsForFunctions),
@@ -70,6 +72,7 @@ CodeTransform::CodeTransform(
 	m_delayedReturnVariables(std::move(_delayedReturnVariables)),
 	m_functionExitLabel(_functionExitLabel)
 {
+	yulAssert(m_evmDialect);
 	if (!m_context)
 	{
 		// initialize
@@ -230,13 +233,14 @@ void CodeTransform::operator()(FunctionCall const& _call)
 	yulAssert(m_scope, "");
 
 	m_assembly.setSourceLocation(originLocationOf(_call));
-	if (BuiltinFunctionForEVM const* builtin = m_dialect.builtin(_call.functionName.name))
+	if (auto const* builtin = m_nameRepository.builtin(_call.functionName.name))
 	{
+		auto const* evmBuiltin = dynamic_cast<BuiltinFunctionForEVM const*>(builtin->definition);
 		for (auto&& [i, arg]: _call.arguments | ranges::views::enumerate | ranges::views::reverse)
-			if (!builtin->literalArgument(i))
+			if (!evmBuiltin->literalArgument(i))
 				visitExpression(arg);
 		m_assembly.setSourceLocation(originLocationOf(_call));
-		builtin->generateCode(_call, m_assembly, m_builtinContext);
+		evmBuiltin->generateCode(_call, m_assembly, m_builtinContext);
 	}
 	else
 	{
@@ -383,10 +387,11 @@ void CodeTransform::operator()(FunctionDefinition const& _function)
 	CodeTransform subTransform(
 		m_assembly,
 		m_info,
+		m_nameRepository,
 		_function.body,
 		m_allowStackOpt,
-		m_dialect,
 		m_builtinContext,
+		m_evmDialect,
 		m_identifierAccessCodeGen,
 		m_useNamedLabelsForFunctions,
 		m_context,
@@ -419,7 +424,7 @@ void CodeTransform::operator()(FunctionDefinition const& _function)
 		m_assembly.markAsInvalid();
 		for (StackTooDeepError& stackError: subTransform.m_stackErrors)
 		{
-			if (stackError.functionName.empty())
+			if (!stackError.functionName.empty())
 				stackError.functionName = _function.name;
 			m_stackErrors.emplace_back(std::move(stackError));
 		}
@@ -457,13 +462,12 @@ void CodeTransform::operator()(FunctionDefinition const& _function)
 		{
 			StackTooDeepError error(
 				_function.name,
-				YulName{},
+				YulNameRepository::emptyName(),
 				static_cast<int>(stackLayout.size()) - 17,
-				"The function " +
-				_function.name.str() +
-				" has " +
-				std::to_string(stackLayout.size() - 17) +
-				" parameters or return variables too many to fit the stack size."
+				fmt::format(
+					"The function {} has {} parameters or return variables too many to fit the stack size.",
+					m_nameRepository.requiredLabelOf(_function.name), stackLayout.size() - 17
+				)
 			);
 			stackError(std::move(error), m_assembly.stackHeight() - static_cast<int>(_function.parameters.size()));
 		}
@@ -602,7 +606,7 @@ void CodeTransform::createFunctionEntryID(FunctionDefinition const& _function)
 			!nameAlreadySeen
 		) ?
 		m_assembly.namedLabel(
-			_function.name.str(),
+			std::string(m_nameRepository.requiredLabelOf(_function.name)),
 			_function.parameters.size(),
 			_function.returnVariables.size(),
 			astID
@@ -782,12 +786,10 @@ size_t CodeTransform::variableHeightDiff(Scope::Variable const& _var, YulName _v
 		m_stackErrors.emplace_back(
 			_varName,
 			heightDiff - limit,
-			"Variable " +
-			_varName.str() +
-			" is " +
-			std::to_string(heightDiff - limit) +
-			" slot(s) too deep inside the stack. " +
-			stackTooDeepString
+			fmt::format(
+				"Variable {} is {} slot(s) too deep inside the stack. {}",
+				m_nameRepository.requiredLabelOf(_varName), heightDiff - limit, stackTooDeepString
+			)
 		);
 		m_assembly.markAsInvalid();
 		return _forSwap ? 2 : 1;

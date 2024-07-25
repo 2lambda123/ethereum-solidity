@@ -43,25 +43,32 @@ using namespace solidity::util;
 using namespace solidity::yul;
 
 DataFlowAnalyzer::DataFlowAnalyzer(
-	Dialect const& _dialect,
+	YulNameRepository const& _nameRepository,
 	MemoryAndStorage _analyzeStores,
 	std::map<YulName, SideEffects> _functionSideEffects
-):
-	m_dialect(_dialect),
+): m_nameRepository(_nameRepository),
 	m_functionSideEffects(std::move(_functionSideEffects)),
-	m_knowledgeBase([this](YulName _var) { return variableValue(_var); }),
+	m_knowledgeBase([this](YulName _var) { return variableValue(_var); }, _nameRepository),
 	m_analyzeStores(_analyzeStores == MemoryAndStorage::Analyze)
 {
 	if (m_analyzeStores)
 	{
-		if (auto const* builtin = _dialect.memoryStoreFunction(YulName{}))
+		if (auto const* builtin = _nameRepository.memoryStoreFunction(YulNameRepository::emptyName()))
 			m_storeFunctionName[static_cast<unsigned>(StoreLoadLocation::Memory)] = builtin->name;
-		if (auto const* builtin = _dialect.memoryLoadFunction(YulName{}))
+		else
+			m_storeFunctionName[static_cast<unsigned>(StoreLoadLocation::Memory)] = std::nullopt;
+		if (auto const* builtin = _nameRepository.memoryLoadFunction(YulNameRepository::emptyName()))
 			m_loadFunctionName[static_cast<unsigned>(StoreLoadLocation::Memory)] = builtin->name;
-		if (auto const* builtin = _dialect.storageStoreFunction(YulName{}))
+		else
+			m_loadFunctionName[static_cast<unsigned>(StoreLoadLocation::Memory)] = std::nullopt;
+		if (auto const* builtin = _nameRepository.storageStoreFunction(YulNameRepository::emptyName()))
 			m_storeFunctionName[static_cast<unsigned>(StoreLoadLocation::Storage)] = builtin->name;
-		if (auto const* builtin = _dialect.storageLoadFunction(YulName{}))
+		else
+			m_storeFunctionName[static_cast<unsigned>(StoreLoadLocation::Storage)] = std::nullopt;
+		if (auto const* builtin = _nameRepository.storageLoadFunction(YulNameRepository::emptyName()))
 			m_loadFunctionName[static_cast<unsigned>(StoreLoadLocation::Storage)] = builtin->name;
+		else
+			m_loadFunctionName[static_cast<unsigned>(StoreLoadLocation::Storage)] = std::nullopt;
 	}
 }
 
@@ -251,7 +258,7 @@ void DataFlowAnalyzer::handleAssignment(std::set<YulName> const& _variables, Exp
 	if (!_isDeclaration)
 		clearValues(_variables);
 
-	MovableChecker movableChecker{m_dialect, &m_functionSideEffects};
+	MovableChecker movableChecker{m_nameRepository, &m_functionSideEffects};
 	if (_value)
 		movableChecker.visit(*_value);
 	else
@@ -374,7 +381,7 @@ void DataFlowAnalyzer::clearKnowledgeIfInvalidated(Block const& _block)
 {
 	if (!m_analyzeStores)
 		return;
-	SideEffectsCollector sideEffects(m_dialect, _block, &m_functionSideEffects);
+	SideEffectsCollector sideEffects(m_nameRepository, _block, &m_functionSideEffects);
 	if (sideEffects.invalidatesStorage())
 		m_state.environment.storage.clear();
 	if (sideEffects.invalidatesMemory())
@@ -388,7 +395,7 @@ void DataFlowAnalyzer::clearKnowledgeIfInvalidated(Expression const& _expr)
 {
 	if (!m_analyzeStores)
 		return;
-	SideEffectsCollector sideEffects(m_dialect, _expr, &m_functionSideEffects);
+	SideEffectsCollector sideEffects(m_nameRepository, _expr, &m_functionSideEffects);
 	if (sideEffects.invalidatesStorage())
 		m_state.environment.storage.clear();
 	if (sideEffects.invalidatesMemory())
@@ -440,13 +447,13 @@ std::optional<YulName> DataFlowAnalyzer::isSimpleLoad(
 		if (funCall->functionName.name == m_loadFunctionName[static_cast<unsigned>(_location)])
 			if (Identifier const* key = std::get_if<Identifier>(&funCall->arguments.front()))
 				return key->name;
-	return {};
+	return std::nullopt;
 }
 
 std::optional<std::pair<YulName, YulName>> DataFlowAnalyzer::isKeccak(Expression const& _expression) const
 {
 	if (FunctionCall const* funCall = std::get_if<FunctionCall>(&_expression))
-		if (funCall->functionName.name == m_dialect.hashFunction({}))
+		if (funCall->functionName.name == m_nameRepository.hashFunction(m_nameRepository.predefined().defaultType))
 			if (Identifier const* start = std::get_if<Identifier>(&funCall->arguments.at(0)))
 				if (Identifier const* length = std::get_if<Identifier>(&funCall->arguments.at(1)))
 					return std::make_pair(start->name, length->name);

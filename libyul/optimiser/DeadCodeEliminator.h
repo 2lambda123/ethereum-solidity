@@ -22,7 +22,6 @@
 #pragma once
 
 #include <libyul/optimiser/ASTWalker.h>
-#include <libyul/YulName.h>
 #include <libyul/ControlFlowSideEffects.h>
 
 #include <map>
@@ -30,7 +29,7 @@
 
 namespace solidity::yul
 {
-struct Dialect;
+class YulNameRepository;
 struct OptimiserStepContext;
 
 /**
@@ -61,11 +60,11 @@ public:
 
 private:
 	DeadCodeEliminator(
-		Dialect const& _dialect,
+		YulNameRepository const& _nameRepository,
 		std::map<YulName, ControlFlowSideEffects> _sideEffects
-	): m_dialect(_dialect), m_functionSideEffects(std::move(_sideEffects)) {}
+	): m_nameRepository(_nameRepository), m_functionSideEffects(std::move(_sideEffects)) {}
 
-	Dialect const& m_dialect;
+	YulNameRepository const& m_nameRepository;
 	std::map<YulName, ControlFlowSideEffects> m_functionSideEffects;
 };
 

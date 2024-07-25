@@ -22,10 +22,7 @@
 #pragma once
 
 #include <libyul/ASTForward.h>
-#include <libyul/YulName.h>
 #include <libyul/optimiser/OptimiserStep.h>
-#include <libyul/optimiser/NameDispenser.h>
-#include <liblangutil/EVMVersion.h>
 
 #include <set>
 #include <string>
@@ -63,7 +60,6 @@ public:
 
 	/// The value nullopt for `_expectedExecutionsPerDeployment` represents creation code.
 	static void run(
-		Dialect const& _dialect,
 		GasMeter const* _meter,
 		Object& _object,
 		bool _optimizeStackAllocation,

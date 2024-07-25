@@ -22,14 +22,13 @@
 #pragma once
 
 #include <libyul/optimiser/ASTWalker.h>
-#include <libyul/optimiser/NameDispenser.h>
 
 #include <set>
 #include <map>
 
 namespace solidity::yul
 {
-struct Dialect;
+class YulNameRepository;
 
 /**
  * Optimiser component that renames identifiers to free up certain names.
@@ -43,15 +42,12 @@ class NameDisplacer: public ASTModifier
 {
 public:
 	explicit NameDisplacer(
-		NameDispenser& _dispenser,
+		YulNameRepository& _nameRepository,
 		std::set<YulName> const& _namesToFree
 	):
-		m_nameDispenser(_dispenser),
+		m_nameRepository(_nameRepository),
 		m_namesToFree(_namesToFree)
-	{
-		for (YulName n: _namesToFree)
-			m_nameDispenser.markUsed(n);
-	}
+	{}
 
 	using ASTModifier::operator();
 	void operator()(Identifier& _identifier) override;
@@ -68,7 +64,7 @@ protected:
 	/// Replace the identifier @a _name if it is in the translation map.
 	void checkAndReplace(YulName& _name) const;
 
-	NameDispenser& m_nameDispenser;
+	YulNameRepository& m_nameRepository;
 	std::set<YulName> const& m_namesToFree;
 	std::map<YulName, YulName> m_translations;
 };

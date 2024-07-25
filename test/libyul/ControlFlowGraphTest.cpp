@@ -51,17 +51,17 @@ ControlFlowGraphTest::ControlFlowGraphTest(std::string const& _filename):
 
 namespace
 {
-static std::string variableSlotToString(VariableSlot const& _slot)
+static std::string variableSlotToString(VariableSlot const& _slot, YulNameRepository const& _nameRepository)
 {
-	return _slot.variable.get().name.str();
+	return std::string{_nameRepository.requiredLabelOf(_slot.variable.get().name)};
 }
 }
 
 class ControlFlowGraphPrinter
 {
 public:
-	ControlFlowGraphPrinter(std::ostream& _stream):
-	m_stream(_stream)
+	ControlFlowGraphPrinter(std::ostream& _stream, YulNameRepository const& _yulNameRepository):
+	m_stream(_stream), m_nameRepository(_yulNameRepository)
 	{
 	}
 	void operator()(CFG::BasicBlock const& _block, bool _isMainEntry = true)
@@ -83,17 +83,17 @@ public:
 		CFG::FunctionInfo const& _info
 	)
 	{
-		m_stream << "FunctionEntry_" << _info.function.name.str() << "_" << getBlockId(*_info.entry) << " [label=\"";
-		m_stream << "function " << _info.function.name.str() << "(";
-		m_stream << joinHumanReadable(_info.parameters | ranges::views::transform(variableSlotToString));
+		m_stream << "FunctionEntry_" << m_nameRepository.requiredLabelOf(_info.function.name) << "_" << getBlockId(*_info.entry) << " [label=\"";
+		m_stream << "function " << m_nameRepository.requiredLabelOf(_info.function.name) << "(";
+		m_stream << joinHumanReadable(_info.parameters | ranges::views::transform([&](auto const& var) { return variableSlotToString(var, m_nameRepository); }));
 		m_stream << ")";
 		if (!_info.returnVariables.empty())
 		{
 			m_stream << " -> ";
-			m_stream << joinHumanReadable(_info.returnVariables | ranges::views::transform(variableSlotToString));
+			m_stream << joinHumanReadable(_info.returnVariables | ranges::views::transform([&](auto const& var) { return variableSlotToString(var, m_nameRepository); }));
 		}
 		m_stream << "\"];\n";
-		m_stream << "FunctionEntry_" << _info.function.name.str() << "_" << getBlockId(*_info.entry) << " -> Block" << getBlockId(*_info.entry) << ";\n";
+		m_stream << "FunctionEntry_" << m_nameRepository.requiredLabelOf(_info.function.name) << "_" << getBlockId(*_info.entry) << " -> Block" << getBlockId(*_info.entry) << ";\n";
 		(*this)(*_info.entry, false);
 	}
 
@@ -126,19 +126,19 @@ private:
 		{
 			std::visit(util::GenericVisitor{
 				[&](CFG::FunctionCall const& _call) {
-					m_stream << _call.function.get().name.str() << ": ";
+					m_stream << m_nameRepository.requiredLabelOf(_call.function.get().name) << ": ";
 				},
 				[&](CFG::BuiltinCall const& _call) {
-					m_stream << _call.functionCall.get().functionName.name.str() << ": ";
+					m_stream << m_nameRepository.requiredLabelOf(_call.functionCall.get().functionName.name) << ": ";
 
 				},
 				[&](CFG::Assignment const& _assignment) {
 					m_stream << "Assignment(";
-					m_stream << joinHumanReadable(_assignment.variables | ranges::views::transform(variableSlotToString));
+					m_stream << joinHumanReadable(_assignment.variables | ranges::views::transform([&](auto const& var) { return variableSlotToString(var, m_nameRepository); }));
 					m_stream << "): ";
 				}
 			}, operation.operation);
-			m_stream << stackToString(operation.input) << " => " << stackToString(operation.output) << "\\l\\\n";
+			m_stream << stackToString(operation.input, m_nameRepository) << " => " << stackToString(operation.output, m_nameRepository) << "\\l\\\n";
 		}
 		m_stream << "\"];\n";
 		std::visit(util::GenericVisitor{
@@ -160,7 +160,7 @@ private:
 			{
 				m_stream << "Block" << getBlockId(_block) << " -> Block" << getBlockId(_block) << "Exit;\n";
 				m_stream << "Block" << getBlockId(_block) << "Exit [label=\"{ ";
-				m_stream << stackSlotToString(_conditionalJump.condition);
+				m_stream << stackSlotToString(_conditionalJump.condition, m_nameRepository);
 				m_stream << "| { <0> Zero | <1> NonZero }}\" shape=Mrecord];\n";
 				m_stream << "Block" << getBlockId(_block);
 				m_stream << "Exit:0 -> Block" << getBlockId(*_conditionalJump.zero) << ";\n";
@@ -169,7 +169,7 @@ private:
 			},
 			[&](CFG::BasicBlock::FunctionReturn const& _return)
 			{
-				m_stream << "Block" << getBlockId(_block) << "Exit [label=\"FunctionReturn[" << _return.info->function.name.str() << "]\"];\n";
+				m_stream << "Block" << getBlockId(_block) << "Exit [label=\"FunctionReturn[" << m_nameRepository.requiredLabelOf(_return.info->function.name) << "]\"];\n";
 				m_stream << "Block" << getBlockId(_block) << " -> Block" << getBlockId(_block) << "Exit;\n";
 			},
 			[&](CFG::BasicBlock::Terminated const&)
@@ -192,6 +192,7 @@ private:
 	std::map<CFG::BasicBlock const*, size_t> m_blockIds;
 	size_t m_blockCount = 0;
 	std::list<CFG::BasicBlock const*> m_blocksToPrint;
+	YulNameRepository const& m_nameRepository;
 };
 
 TestCase::TestResult ControlFlowGraphTest::run(std::ostream& _stream, std::string const& _linePrefix, bool const _formatted)
@@ -205,11 +206,10 @@ TestCase::TestResult ControlFlowGraphTest::run(std::ostream& _stream, std::strin
 	}
 
 	std::ostringstream output;
-
-	std::unique_ptr<CFG> cfg = ControlFlowGraphBuilder::build(*analysisInfo, *m_dialect, *object->code);
+	std::unique_ptr<CFG> cfg = ControlFlowGraphBuilder::build(*analysisInfo, object->code->nameRepository(), object->code->block());
 
 	output << "digraph CFG {\nnodesep=0.7;\nnode[shape=box];\n\n";
-	ControlFlowGraphPrinter printer{output};
+	ControlFlowGraphPrinter printer{output, *cfg->nameRepository};
 	printer(*cfg->entry);
 	for (auto function: cfg->functions)
 		printer(cfg->functionInfo.at(function));

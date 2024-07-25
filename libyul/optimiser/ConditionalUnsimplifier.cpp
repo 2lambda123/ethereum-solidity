@@ -30,8 +30,8 @@ using namespace solidity::util;
 void ConditionalUnsimplifier::run(OptimiserStepContext& _context, Block& _ast)
 {
 	ConditionalUnsimplifier{
-		_context.dialect,
-		ControlFlowSideEffectsCollector{_context.dialect, _ast}.functionSideEffectsNamed()
+		_context.nameRepository,
+		ControlFlowSideEffectsCollector{_context.nameRepository, _ast}.functionSideEffectsNamed()
 	}(_ast);
 }
 
@@ -43,7 +43,7 @@ void ConditionalUnsimplifier::operator()(Switch& _switch)
 		ASTModifier::operator()(_switch);
 		return;
 	}
-	YulName expr = std::get<Identifier>(*_switch.expression).name;
+	auto expr = std::get<Identifier>(*_switch.expression).name;
 	for (auto& _case: _switch.cases)
 	{
 		if (_case.value)
@@ -83,10 +83,10 @@ void ConditionalUnsimplifier::operator()(Block& _block)
 					!_if.body.statements.empty()
 				)
 				{
-					YulName condition = std::get<Identifier>(*_if.condition).name;
+					auto condition = std::get<Identifier>(*_if.condition).name;
 					if (
 						std::holds_alternative<Assignment>(_stmt2) &&
-						TerminationFinder(m_dialect, &m_functionSideEffects).controlFlowKind(_if.body.statements.back()) !=
+						TerminationFinder(m_nameRepository, &m_functionSideEffects).controlFlowKind(_if.body.statements.back()) !=
 							TerminationFinder::ControlFlow::FlowOut
 					)
 					{

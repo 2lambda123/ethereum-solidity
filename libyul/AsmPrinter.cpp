@@ -66,7 +66,7 @@ std::string AsmPrinter::operator()(Literal const& _literal)
 std::string AsmPrinter::operator()(Identifier const& _identifier)
 {
 	yulAssert(!_identifier.name.empty(), "Invalid identifier.");
-	return formatDebugData(_identifier) + _identifier.name.str();
+	return formatDebugData(_identifier) + std::string(m_nameRepository.requiredLabelOf(_identifier.name));
 }
 
 std::string AsmPrinter::operator()(ExpressionStatement const& _statement)
@@ -112,7 +112,7 @@ std::string AsmPrinter::operator()(FunctionDefinition const& _functionDefinition
 	yulAssert(!_functionDefinition.name.empty(), "Invalid function name.");
 
 	std::string out = formatDebugData(_functionDefinition);
-	out += "function " + _functionDefinition.name.str() + "(";
+	out += "function " + std::string(m_nameRepository.requiredLabelOf(_functionDefinition.name)) + "(";
 	out += boost::algorithm::join(
 		_functionDefinition.parameters | ranges::views::transform(
 			[this](TypedName argument) { return formatTypedName(argument); }
@@ -237,26 +237,26 @@ std::string AsmPrinter::operator()(Block const& _block)
 	}
 }
 
-std::string AsmPrinter::formatTypedName(TypedName _variable)
+std::string AsmPrinter::formatTypedName(TypedName const& _variable)
 {
 	yulAssert(!_variable.name.empty(), "Invalid variable name.");
-	return formatDebugData(_variable) + _variable.name.str() + appendTypeName(_variable.type);
+	return formatDebugData(_variable) + std::string(m_nameRepository.requiredLabelOf(_variable.name)) + appendTypeName(_variable.type);
 }
 
 std::string AsmPrinter::appendTypeName(YulName _type, bool _isBoolLiteral) const
 {
-	if (m_dialect && !_type.empty())
+	if (m_printingMode == Mode::OmitDefaultType && !_type.empty())
 	{
-		if (!_isBoolLiteral && _type == m_dialect->defaultType)
+		if (!_isBoolLiteral && _type == m_nameRepository.predefined().defaultType)
 			_type = {};
-		else if (_isBoolLiteral && _type == m_dialect->boolType && !m_dialect->defaultType.empty())
+		else if (_isBoolLiteral && _type == m_nameRepository.predefined().boolType && !m_nameRepository.predefined().defaultType.empty())
 			// Special case: If we have a bool type but empty default type, do not remove the type.
 			_type = {};
 	}
 	if (_type.empty())
 		return {};
 	else
-		return ":" + _type.str();
+		return fmt::format(":{}", m_nameRepository.requiredLabelOf(_type));
 }
 
 std::string AsmPrinter::formatSourceLocation(

@@ -67,8 +67,7 @@ public:
 };
 
 
-TypeInfo::TypeInfo(Dialect const& _dialect, Block const& _ast):
-	m_dialect(_dialect)
+TypeInfo::TypeInfo(YulNameRepository const& _nameRepository, Block const& _ast): m_nameRepository(_nameRepository)
 {
 	TypeCollector types(_ast);
 	m_functionTypes = std::move(types.functionTypes);
@@ -79,9 +78,9 @@ YulName TypeInfo::typeOf(Expression const& _expression) const
 {
 	return std::visit(GenericVisitor{
 		[&](FunctionCall const& _funCall) {
-			YulName name = _funCall.functionName.name;
-			std::vector<YulName> const* retTypes = nullptr;
-			if (BuiltinFunction const* fun = m_dialect.builtin(name))
+			auto name = _funCall.functionName.name;
+			std::vector<YulName> const* retTypes;
+			if (auto const* fun = m_nameRepository.builtin(name))
 				retTypes = &fun->returns;
 			else
 				retTypes = &m_functionTypes.at(name).returns;

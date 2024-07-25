@@ -25,7 +25,6 @@
 
 #include <libyul/optimiser/ASTWalker.h>
 #include <libyul/optimiser/KnowledgeBase.h>
-#include <libyul/YulName.h>
 #include <libyul/AST.h> // Needed for m_zero below.
 #include <libyul/SideEffects.h>
 
@@ -87,7 +86,7 @@ public:
 	///            if this is not provided or the function is not found.
 	///            The parameter is mostly used to determine movability of expressions.
 	explicit DataFlowAnalyzer(
-		Dialect const& _dialect,
+		YulNameRepository const& _nameRepository,
 		MemoryAndStorage _analyzeStores,
 		std::map<YulName, SideEffects> _functionSideEffects = {}
 	);
@@ -162,7 +161,7 @@ protected:
 	/// where s and l are variables and returns these variables in that case.
 	std::optional<std::pair<YulName, YulName>> isKeccak(Expression const& _expression) const;
 
-	Dialect const& m_dialect;
+	YulNameRepository const& m_nameRepository;
 	/// Side-effects of user-defined functions. Worst-case side-effects are assumed
 	/// if this is not provided or the function is not found.
 	std::map<YulName, SideEffects> m_functionSideEffects;
@@ -203,8 +202,8 @@ protected:
 
 	/// If true, analyzes memory and storage content via mload/mstore and sload/sstore.
 	bool m_analyzeStores = true;
-	YulName m_storeFunctionName[static_cast<unsigned>(StoreLoadLocation::Last) + 1];
-	YulName m_loadFunctionName[static_cast<unsigned>(StoreLoadLocation::Last) + 1];
+	std::optional<YulName> m_storeFunctionName[static_cast<unsigned>(StoreLoadLocation::Last) + 1];
+	std::optional<YulName> m_loadFunctionName[static_cast<unsigned>(StoreLoadLocation::Last) + 1];
 
 	/// Current nesting depth of loops.
 	size_t m_loopDepth{0};
@@ -217,7 +216,7 @@ protected:
 	};
 	/// Special expression whose address will be used in m_value.
 	/// YulName does not need to be reset because DataFlowAnalyzer is short-lived.
-	Expression const m_zero{Literal{{}, LiteralKind::Number, LiteralValue{0, "0"}, {}}};
+	Expression const m_zero{Literal{{}, LiteralKind::Number, LiteralValue(0, std::nullopt), {}}};
 	/// List of scopes.
 	std::vector<Scope> m_variableScopes;
 };

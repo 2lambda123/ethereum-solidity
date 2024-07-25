@@ -24,7 +24,6 @@
 #pragma once
 
 #include <libyul/AST.h>
-#include <libyul/ASTForward.h>
 #include <libyul/Dialect.h>
 
 #include <liblangutil/SourceLocation.h>
@@ -85,14 +84,22 @@ public:
 		}
 	{}
 
-	/// Parses an inline assembly block starting with `{` and ending with `}`.
+	/// Parses an inline assembly block starting with `{` and ending with `}`. Optionally accepts an external name
+	/// repository with definitions of existing names of, e.g., external identifiers.
 	/// @returns an empty shared pointer on error.
-	std::unique_ptr<Block> parseInline(std::shared_ptr<langutil::Scanner> const& _scanner);
+	std::unique_ptr<AST> parseInline(
+		std::shared_ptr<langutil::Scanner> const& _scanner,
+		std::optional<YulNameRepository> _nameRepository = std::nullopt
+	);
 
 	/// Parses an assembly block starting with `{` and ending with `}`
-	/// and expects end of input after the '}'.
+	/// and expects end of input after the '}'. Optionally accepts an external name
+	/// repository with definitions of existing names of, e.g., external identifiers.
 	/// @returns an empty shared pointer on error.
-	std::unique_ptr<Block> parse(langutil::CharStream& _charStream);
+	std::unique_ptr<AST> parse(
+		langutil::CharStream& _charStream,
+		std::optional<YulNameRepository> _nameRepository = std::nullopt
+	);
 
 protected:
 	langutil::SourceLocation currentLocation() const override
@@ -133,20 +140,20 @@ protected:
 		return r;
 	}
 
-	Block parseBlock();
-	Statement parseStatement();
-	Case parseCase();
-	ForLoop parseForLoop();
+	Block parseBlock(YulNameRepository& _nameRepository);
+	Statement parseStatement(YulNameRepository& _nameRepository);
+	Case parseCase(YulNameRepository& _nameRepository);
+	ForLoop parseForLoop(YulNameRepository& _nameRepository);
 	/// Parses a functional expression that has to push exactly one stack element
-	Expression parseExpression(bool _unlimitedLiteralArgument = false);
+	Expression parseExpression(YulNameRepository& _nameRepository, bool _unlimitedLiteralArgument = false);
 	/// Parses an elementary operation, i.e. a literal, identifier, instruction or
 	/// builtin function call (only the name).
-	std::variant<Literal, Identifier> parseLiteralOrIdentifier(bool _unlimitedLiteralArgument = false);
-	VariableDeclaration parseVariableDeclaration();
-	FunctionDefinition parseFunctionDefinition();
-	FunctionCall parseCall(std::variant<Literal, Identifier>&& _initialOp);
-	TypedName parseTypedName();
-	YulName expectAsmIdentifier();
+	std::variant<Literal, Identifier> parseLiteralOrIdentifier(YulNameRepository& _nameRepository, bool _unlimitedLiteralArgument = false);
+	VariableDeclaration parseVariableDeclaration(YulNameRepository& _nameRepository);
+	FunctionDefinition parseFunctionDefinition(YulNameRepository& _nameRepository);
+	FunctionCall parseCall(std::variant<Literal, Identifier>&& _initialOp, YulNameRepository& _nameRepository);
+	TypedName parseTypedName(YulNameRepository& _nameRepository);
+	YulName expectAsmIdentifier(YulNameRepository& _nameRepository);
 
 	/// Reports an error if we are currently not inside the body part of a for loop.
 	void checkBreakContinuePosition(std::string const& _which);

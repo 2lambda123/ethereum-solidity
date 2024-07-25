@@ -167,10 +167,10 @@ ControlFlowNode* ControlFlowBuilder::newNode()
 
 
 ControlFlowSideEffectsCollector::ControlFlowSideEffectsCollector(
-	Dialect const& _dialect,
+	YulNameRepository const& _nameRepository,
 	Block const& _ast
 ):
-	m_dialect(_dialect),
+	m_nameRepository(_nameRepository),
 	m_cfgBuilder(_ast),
 	m_functionReferences(FunctionReferenceResolver{_ast}.references())
 {
@@ -271,8 +271,8 @@ ControlFlowNode const* ControlFlowSideEffectsCollector::nextProcessableNode(Func
 
 ControlFlowSideEffects const& ControlFlowSideEffectsCollector::sideEffects(FunctionCall const& _call) const
 {
-	if (auto const* builtin = m_dialect.builtin(_call.functionName.name))
-		return builtin->controlFlowSideEffects;
+	if (auto const* builtin = m_nameRepository.builtin(_call.functionName.name))
+		return builtin->definition->controlFlowSideEffects;
 	else
 		return m_functionSideEffects.at(m_functionReferences.at(&_call));
 }

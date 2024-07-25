@@ -63,7 +63,7 @@ public:
 	static void run(OptimiserStepContext& _context, Block& _ast);
 
 	explicit UnusedStoreEliminator(
-		Dialect const& _dialect,
+		YulNameRepository const& _nameRepository,
 		std::map<YulName, SideEffects> const& _functionSideEffects,
 		std::map<YulName, ControlFlowSideEffects> _controlFlowSideEffects,
 		std::map<YulName, AssignedValue> const& _ssaValues,
@@ -92,8 +92,10 @@ public:
 	};
 
 private:
-	std::set<Statement const*>& activeMemoryStores() { return m_activeStores["m"_yulname]; }
-	std::set<Statement const*>& activeStorageStores() { return m_activeStores["s"_yulname]; }
+	static constexpr YulName memoryStoreKey = YulName{0, 0};
+	static constexpr YulName storageStoreKey = YulName{1, 0};
+	std::set<Statement const*>& activeMemoryStores() { return m_activeStores[memoryStoreKey]; }
+	std::set<Statement const*>& activeStorageStores() { return m_activeStores[storageStoreKey]; }
 
 	void shortcutNestedLoop(ActiveStores const&) override
 	{
@@ -123,6 +125,7 @@ private:
 	std::map<Statement const*, Operation> m_storeOperations;
 
 	KnowledgeBase mutable m_knowledgeBase;
+	YulNameRepository const& m_nameRepository;
 };
 
 }

@@ -24,14 +24,13 @@
 #include <libyul/ASTForward.h>
 
 #include <libyul/optimiser/ASTWalker.h>
-#include <libyul/optimiser/NameDispenser.h>
 
 #include <vector>
 
 namespace solidity::yul
 {
 
-struct Dialect;
+class YulNameRepository;
 struct OptimiserStepContext;
 class TypeInfo;
 
@@ -70,12 +69,10 @@ public:
 
 private:
 	explicit ExpressionSplitter(
-		Dialect const& _dialect,
-		NameDispenser& _nameDispenser,
+		YulNameRepository& _nameRepository,
 		TypeInfo& _typeInfo
 	):
-		m_dialect(_dialect),
-		m_nameDispenser(_nameDispenser),
+		m_nameRepository(_nameRepository),
 		m_typeInfo(_typeInfo)
 	{ }
 
@@ -87,8 +84,7 @@ private:
 	/// List of statements that should go in front of the currently visited AST element,
 	/// at the statement level.
 	std::vector<Statement> m_statementsToPrefix;
-	Dialect const& m_dialect;
-	NameDispenser& m_nameDispenser;
+	YulNameRepository& m_nameRepository;
 	TypeInfo& m_typeInfo;
 };
 

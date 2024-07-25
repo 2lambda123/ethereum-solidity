@@ -54,9 +54,9 @@ struct CopyTranslate: public yul::ASTCopier
 {
 	CopyTranslate(
 		IRGenerationContext const& _context,
-		yul::Dialect const& _dialect,
+		yul::YulNameRepository& _nameRepository,
 		std::map<yul::Identifier const*, InlineAssemblyAnnotation::ExternalIdentifierInfo> _references
-	): m_context(_context), m_dialect(_dialect), m_references(std::move(_references)) {}
+	): m_context(_context), m_nameRepository(_nameRepository), m_references(std::move(_references)) {}
 
 	using ASTCopier::operator();
 
@@ -72,10 +72,10 @@ struct CopyTranslate: public yul::ASTCopier
 
 	yul::YulName translateIdentifier(yul::YulName _name) override
 	{
-		if (m_dialect.builtin(_name))
+		if (m_nameRepository.isBuiltinName(_name))
 			return _name;
 		else
-			return yul::YulName{"usr$" + _name.str()};
+			return m_nameRepository.defineName("usr$" + std::string(m_nameRepository.requiredLabelOf(_name)));
 	}
 
 	yul::Identifier translate(yul::Identifier const& _identifier) override
@@ -102,11 +102,11 @@ private:
 		solAssert(type);
 		solAssert(m_context.env->typeEquals(*type, m_context.analysis.typeSystem().type(PrimitiveType::Word, {})));
 		std::string value = IRNames::localVariable(*varDecl);
-		return yul::Identifier{_identifier.debugData, yul::YulName{value}};
+		return yul::Identifier{_identifier.debugData, m_nameRepository.defineName(value)};
 	}
 
 	IRGenerationContext const& m_context;
-	yul::Dialect const& m_dialect;
+	yul::YulNameRepository& m_nameRepository;
 	std::map<yul::Identifier const*, InlineAssemblyAnnotation::ExternalIdentifierInfo> m_references;
 };
 
@@ -129,10 +129,11 @@ bool IRGeneratorForStatements::visit(TupleExpression const& _tupleExpression)
 
 bool IRGeneratorForStatements::visit(InlineAssembly const& _assembly)
 {
-	CopyTranslate bodyCopier{m_context, _assembly.dialect(), _assembly.annotation().externalReferences};
-	yul::Statement modified = bodyCopier(_assembly.operations());
+	yul::YulNameRepository nameRepository(_assembly.operations().nameRepository());
+	CopyTranslate bodyCopier{m_context, nameRepository, _assembly.annotation().externalReferences};
+	yul::Statement modified = bodyCopier(_assembly.operations().block());
 	solAssert(std::holds_alternative<yul::Block>(modified));
-	m_code << yul::AsmPrinter()(std::get<yul::Block>(modified)) << "\n";
+	m_code << yul::AsmPrinter(yul::AsmPrinter::Mode::FullTypeInfo, nameRepository)(std::get<yul::Block>(modified)) << "\n";
 	return false;
 }
 
