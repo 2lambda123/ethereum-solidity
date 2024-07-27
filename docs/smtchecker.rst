@@ -483,13 +483,13 @@ All targets are checked by default, except underflow and overflow for Solidity >
 There is no precise heuristic on how and when to split verification targets,
 but it can be useful especially when dealing with large contracts.
 
-Proved Targets
+Proved Safe Targets
 ==============
 
-If there are any proved targets, the SMTChecker issues one warning per engine stating
-how many targets were proved. If the user wishes to see all the specific
-proved targets, the CLI option ``--model-checker-show-proved`` and
-the JSON option ``settings.modelChecker.showProved = true`` can be used.
+If there are any proved safe targets, the SMTChecker issues one warning per engine stating
+how many targets were proved safe. If the user wishes to see all the specific
+proved safe targets, the CLI option ``--model-checker-show-proved-safe`` and
+the JSON option ``settings.modelChecker.showProvedSafe = true`` can be used.
 
 Unproved Targets
 ================

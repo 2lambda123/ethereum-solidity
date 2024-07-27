@@ -480,8 +480,8 @@ Input Description
           "extCalls": "trusted",
           // Choose which types of invariants should be reported to the user: contract, reentrancy.
           "invariants": ["contract", "reentrancy"],
-          // Choose whether to output all proved targets. The default is `false`.
-          "showProved": true,
+          // Choose whether to output all proved safe targets. The default is `false`.
+          "showProvedSafe": true,
           // Choose whether to output all unproved targets. The default is `false`.
           "showUnproved": true,
           // Choose whether to output all unsupported language features. The default is `false`.
