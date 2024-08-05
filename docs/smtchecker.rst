@@ -484,7 +484,7 @@ There is no precise heuristic on how and when to split verification targets,
 but it can be useful especially when dealing with large contracts.
 
 Proved Safe Targets
-==============
+===================
 
 If there are any proved safe targets, the SMTChecker issues one warning per engine stating
 how many targets were proved safe. If the user wishes to see all the specific
