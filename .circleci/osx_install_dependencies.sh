@@ -112,7 +112,7 @@ then
   rm -rf "$z3_dir"
 
   # evmone
-  evmone_version="0.11.0"
+  evmone_version="0.12.0"
   if [[ $(uname -m) == 'arm64' ]]
   then
     # evmone does not provide any builds for apple silicon yet. so lets just build it locally.
