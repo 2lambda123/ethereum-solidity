@@ -27,8 +27,9 @@
 #include <boost/algorithm/string/join.hpp>
 #include <boost/algorithm/string/predicate.hpp>
 
-#include <range/v3/algorithm/find_if.hpp>
 #include <range/v3/algorithm/all_of.hpp>
+#include <range/v3/algorithm/find_if.hpp>
+#include <range/v3/algorithm/sort.hpp>
 #include <range/v3/view.hpp>
 
 #include <array>
@@ -90,7 +91,7 @@ void CHCSmtLib2Interface::addRule(Expression const& _expr, std::string const& /*
 	m_commands.assertion("(forall" + forall(_expr) + '\n' + m_context.toSExpr(_expr) + ")\n");
 }
 
-std::tuple<CheckResult, Expression, CHCSolverInterface::CexGraph> CHCSmtLib2Interface::query(Expression const& _block)
+CHCSolverInterface::QueryResult CHCSmtLib2Interface::query(Expression const& _block)
 {
 	std::string query = dumpQuery(_block);
 	std::string response = querySolver(query);
@@ -200,6 +201,24 @@ bool isNumber(std::string const& _expr)
 {
 	return ranges::all_of(_expr, [](char c) { return isDigit(c) || c == '.'; });
 }
+
+bool isBitVectorHexConstant(std::string const& _string)
+{
+	if (_string.substr(0, 2) != "#x")
+		return false;
+	if (_string.find_first_not_of("0123456789abcdefABCDEF", 2) != std::string::npos)
+		return false;
+	return true;
+}
+
+bool isBitVectorConstant(std::string const& _string)
+{
+	if (_string.substr(0, 2) != "#b")
+		return false;
+	if (_string.find_first_not_of("01", 2) != std::string::npos)
+		return false;
+	return true;
+}
 }
 
 void CHCSmtLib2Interface::ScopedParser::addVariableDeclaration(std::string _name, solidity::smtutil::SortPointer _sort)
@@ -279,6 +298,10 @@ smtutil::Expression CHCSmtLib2Interface::ScopedParser::toSMTUtilExpression(SMTLi
 					return smtutil::Expression(_atom == "true");
 				else if (isNumber(_atom))
 					return smtutil::Expression(_atom, {}, SortProvider::sintSort);
+				else if (isBitVectorHexConstant(_atom))
+					return smtutil::Expression(_atom, {}, std::make_shared<BitVectorSort>((_atom.size() - 2) * 4));
+				else if (isBitVectorConstant(_atom))
+					return smtutil::Expression(_atom, {}, std::make_shared<BitVectorSort>(_atom.size() - 2));
 				else if (auto it = m_localVariables.find(_atom); it != m_localVariables.end())
 					return smtutil::Expression(_atom, {}, it->second);
 				else if (m_context.isDeclared(_atom))
@@ -407,7 +430,7 @@ std::optional<smtutil::Expression> CHCSmtLib2Interface::invariantsFromSolverResp
 		precondition(!isAtom(args[2]));
 		precondition(isAtom(args[3]) && asAtom(args[3]) == "Bool");
 		auto& interpretation = args[4];
-//		inlineLetExpressions(interpretation);
+		inlineLetExpressions(interpretation);
 		ScopedParser scopedParser(m_context);
 		auto const& formalArguments = asSubExpressions(args[2]);
 		std::vector<Expression> predicateArgs;
@@ -425,6 +448,14 @@ std::optional<smtutil::Expression> CHCSmtLib2Interface::invariantsFromSolverResp
 		}
 
 		auto parsedInterpretation = scopedParser.toSMTUtilExpression(interpretation);
+		// Hack to make invariants more stable across operating systems
+		// FIXME: We should not need to sort!
+		if (parsedInterpretation.name == "and" || parsedInterpretation.name == "or")
+		{
+			ranges::sort(parsedInterpretation.arguments, [](Expression const& first, Expression const& second) {
+				return first.name < second.name;
+			});
+		}
 
 		Expression predicate(asAtom(args[1]), predicateArgs, SortProvider::boolSort);
 		definitions.push_back(predicate == parsedInterpretation);
@@ -432,3 +463,110 @@ std::optional<smtutil::Expression> CHCSmtLib2Interface::invariantsFromSolverResp
 	return Expression::mkAnd(std::move(definitions));
 }
 #undef precondition
+
+namespace
+{
+
+struct LetBindings
+{
+	using BindingRecord = std::vector<SMTLib2Expression>;
+	std::unordered_map<std::string, BindingRecord> bindings;
+	std::vector<std::string> varNames;
+	std::vector<std::size_t> scopeBounds;
+
+	bool has(std::string const& varName) { return bindings.find(varName) != bindings.end(); }
+
+	SMTLib2Expression& operator[](std::string const& varName)
+	{
+		auto it = bindings.find(varName);
+		solAssert(it != bindings.end());
+		solAssert(!it->second.empty());
+		return it->second.back();
+	}
+
+	void pushScope() { scopeBounds.push_back(varNames.size()); }
+
+	void popScope()
+	{
+		smtAssert(!scopeBounds.empty());
+		auto bound = scopeBounds.back();
+		while (varNames.size() > bound)
+		{
+			auto const& varName = varNames.back();
+			auto it = bindings.find(varName);
+			smtAssert(it != bindings.end());
+			auto& record = it->second;
+			record.pop_back();
+			if (record.empty())
+				bindings.erase(it);
+			varNames.pop_back();
+		}
+		scopeBounds.pop_back();
+	}
+
+	void addBinding(std::string name, SMTLib2Expression expression)
+	{
+		auto it = bindings.find(name);
+		if (it == bindings.end())
+			bindings.insert({name, {std::move(expression)}});
+		else
+			it->second.push_back(std::move(expression));
+		varNames.push_back(std::move(name));
+	}
+};
+
+void inlineLetExpressions(SMTLib2Expression& _expr, LetBindings& _bindings)
+{
+	if (isAtom(_expr))
+	{
+		auto const& atom = asAtom(_expr);
+		if (_bindings.has(atom))
+			_expr = _bindings[atom];
+		return;
+	}
+	auto& subexprs = asSubExpressions(_expr);
+	solAssert(!subexprs.empty());
+	auto const& first = subexprs.at(0);
+	if (isAtom(first) && asAtom(first) == "let")
+	{
+		solAssert(subexprs.size() >= 3);
+		solAssert(!isAtom(subexprs[1]));
+		auto& bindingExpressions = asSubExpressions(subexprs[1]);
+		// process new bindings
+		std::vector<std::pair<std::string, SMTLib2Expression>> newBindings;
+		for (auto& binding: bindingExpressions)
+		{
+			solAssert(!isAtom(binding));
+			auto& bindingPair = asSubExpressions(binding);
+			solAssert(bindingPair.size() == 2);
+			solAssert(isAtom(bindingPair.at(0)));
+			inlineLetExpressions(bindingPair.at(1), _bindings);
+			newBindings.emplace_back(asAtom(bindingPair.at(0)), bindingPair.at(1));
+		}
+		_bindings.pushScope();
+		for (auto&& [name, expr]: newBindings)
+			_bindings.addBinding(std::move(name), std::move(expr));
+
+		newBindings.clear();
+
+		// get new subexpression
+		inlineLetExpressions(subexprs.at(2), _bindings);
+		// remove the new bindings
+		_bindings.popScope();
+
+		// update the expression
+		auto tmp = std::move(subexprs.at(2));
+		_expr = std::move(tmp);
+		return;
+	}
+	// not a let expression, just process all arguments recursively
+	for (auto& subexpr: subexprs)
+		inlineLetExpressions(subexpr, _bindings);
+}
+}
+
+void CHCSmtLib2Interface::inlineLetExpressions(SMTLib2Expression& expr)
+{
+	LetBindings bindings;
+	::inlineLetExpressions(expr, bindings);
+}
