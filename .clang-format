@@ -1,38 +1,50 @@
-# Formatting approximately used in Solidity's C++
+# Formatting used in Solidity's C++
 #
-# See https://clang.llvm.org/docs/ClangFormatStyleOptions.html
-# For an online formatter to test settings, see
-# https://zed0.co.uk/clang-format-configurator/
-# Note that clang-format cannot express the style that closing parentheses
-# behave similar to closing curly braces in a multi-line setting in that
-# they have to be on a line of their own at the same indentation level
-# as the opening part (aka "dangling parenthesis", see https://reviews.llvm.org/D33029).
+# Relies on clang 20 (at the time of writing unreleased) and an additional patch:
+# https://gist.github.com/ekpyron/07d3796f27527b41784546df20200fda
+# A compatible fully static clang-format can e.g. be built using
+# https://gist.github.com/ekpyron/36d56b02f15892c5d6db92a3e44aae52
 
 Language: Cpp
 BasedOnStyle: LLVM
 AccessModifierOffset: -4
-AlignAfterOpenBracket: AlwaysBreak
+AlignAfterOpenBracket: AlwaysBlockIndent
 AlignEscapedNewlines: Left
+AlignOperands: Align
+AllowAllArgumentsOnNextLine: false
 AlwaysBreakAfterReturnType: None
 AlwaysBreakTemplateDeclarations: Yes
 BinPackArguments: false
 BinPackParameters: false
-BreakBeforeBinaryOperators: All
+BreakBeforeBinaryOperators: None
+BreakBinaryOperations: OnePerLine
 BreakBeforeBraces: Allman
+BreakConstructorInitializers: BeforeColon
 ColumnLimit: 120
 ContinuationIndentWidth: 4
+Cpp11BracedListStyle: true
 FixNamespaceComments: false
+IncludeBlocks: Preserve
 IndentWidth: 4
+IndentWrappedFunctionNames: false
+InsertNewlineAtEOF: true
+InsertTrailingCommas: Wrapped
 KeepEmptyLinesAtTheStartOfBlocks: false
 MaxEmptyLinesToKeep: 2
+PackConstructorInitializers: NextLine
 PenaltyBreakBeforeFirstCallParameter: 2000
 PointerAlignment: Left
+ReflowComments: true
+RemoveBracesLLVM: true
+RemoveSemicolon: true
 SpaceAfterCStyleCast: true
 SpaceAfterTemplateKeyword: false
 SpaceBeforeCtorInitializerColon: false
 SpaceBeforeInheritanceColon: false
 SpaceBeforeParens: ControlStatements
 SpaceBeforeRangeBasedForLoopColon: false
+SortIncludes: CaseInsensitive
+QualifierAlignment: Right
 TabWidth: 4
 UseTab: Always
 
